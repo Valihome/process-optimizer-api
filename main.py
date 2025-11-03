@@ -31,5 +31,14 @@ MOCK_RESPONSE = {
 
 @app.route('/api/analyze', methods=['POST'])
 def analyze_process():
+    # Preluarea datelor din cererea JSON
+    data = request.get_json()
+    domeniu = data.get('domeniu', 'Nedefinit')
+    description = data.get('description', 'Fără descriere')
+    
+    # Ajustăm Mock Data pentru a testa preluarea noului câmp
+    response_data = MOCK_RESPONSE.copy()
+    response_data["analiza_generala"] = f"(Domeniul selectat: {domeniu}) " + response_data["analiza_generala"]
+    
     # Returnează răspunsul simulat
-    return jsonify(MOCK_RESPONSE)
+    return jsonify(response_data)
