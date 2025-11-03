@@ -6,41 +6,37 @@ from google.genai import types
 
 # Variabila OBLIGATORIE 'app' pentru Gunicorn și Flask
 app = Flask(__name__)
-# Activează CORS pentru a permite Frontend-ului să acceseze API-ul
 CORS(app) 
 
 # --- 1. CONFIGURARE GEMINI API ---
-# Clientul citește automat cheia din variabila de mediu GEMINI_API_KEY
 try:
     client = genai.Client()
 except Exception as e:
-    # Dacă cheia nu este setată (înainte de deploy), acest lucru poate eșua inițializarea
-    print(f"Atenție: Inițializarea clientului AI a eșuat. S-a așteaptă setarea GEMINI_API_KEY. Eroare: {e}")
+    print(f"Atentie: Initializarea clientului AI a esuat. S-a asteapta setarea GEMINI_API_KEY. Eroare: {e}")
     client = None
 
-# Definirea schemei de răspuns JSON (Schema) pe care o dorim de la model
-# Aceasta asigură că răspunsul se potrivește cu formatul așteptat de Frontend
+# Definirea schemei de răspuns JSON
 RESPONSE_SCHEMA = types.Schema(
     type=types.Type.OBJECT,
     properties={
-        "analiza_generala": types.Schema(type=types.Type.STRING, description="O frază sumară a procesului și a oportunităților generale."),
+        "analiza_generala": types.Schema(type=types.Type.STRING, description="O fraza sumara a procesului si a oportunitatilor generale."),
         "oportunitati_optimizare": types.Schema(
             type=types.Type.ARRAY,
-            description="O listă cu minim 2-3 pași care pot fi automatizați.",
+            description="O lista cu minim 2-3 pasi care pot fi automatizati.",
             items=types.Schema(
                 type=types.Type.OBJECT,
                 properties={
-                    "pas_proces_original": types.Schema(type=types.Type.STRING, description="Descrierea exactă a pasului original din textul utilizatorului."),
-                    "tip_ineficienta": types.Schema(type=types.Type.STRING, description="Ex: Repetitiv, Risc de Eroare, Blocaj, Timp de Așteptare."),
-                    "impact_estimat": types.Schema(type=types.Type.STRING, description="Ex: Economie de 3 ore/săptămână, Reducerea erorilor cu 80%."),
+                    "pas_proces_original": types.Schema(type=types.Type.STRING, description="Descrierea exacta a pasului original din textul utilizatorului."),
+                    "tip_ineficienta": types.Schema(type=types.Type.STRING, description="Ex: Repetitiv, Risc de Eroare, Blocaj, Timp de Asteptare."),
+                    "impact_estimat": types.Schema(type=types.Type.STRING, description="Ex: Economie de 3 ore/saptamana, Reducerea erorilor cu 80%."),
                     "solutie_recomandata": types.Schema(type=types.Type.STRING, description="Ex: Automatizare RPA, Low-Code Workflow, Integrare API."),
                     "instrument_sugerat": types.Schema(type=types.Type.STRING, description="Ex: UiPath, Zapier, Google Apps Script, Python."),
-                    "prompt_cod_relevant": types.Schema(type=types.Type.STRING, description="Un prompt detaliat sau un snippet de cod relevant pentru soluție. Folosește 'N/A' dacă nu este necesar."),
+                    "prompt_cod_relevant": types.Schema(type=types.Type.STRING, description="Un prompt detaliat sau un snippet de cod relevant pentru solutie. Foloseste 'N/A' daca nu este necesar."),
                 },
                 required=["pas_proces_original", "tip_ineficienta", "impact_estimat", "solutie_recomandata", "instrument_sugerat", "prompt_cod_relevant"]
             )
         ),
-        "next_steps": types.Schema(type=types.Type.STRING, description="Un paragraf scurt care încurajează utilizatorul să treacă la implementare.")
+        "next_steps": types.Schema(type=types.Type.STRING, description="Un paragraf scurt care incurajeaza utilizatorul sa treaca la implementare.")
     },
     required=["analiza_generala", "oportunitati_optimizare", "next_steps"]
 )
@@ -48,29 +44,29 @@ RESPONSE_SCHEMA = types.Schema(
 # 2. Ruta API pentru analiză
 @app.route('/api/analyze', methods=['POST'])
 def analyze_process():
-    # Preluarea datelor din cererea JSON trimisă de Frontend
     data = request.get_json()
-    domeniu = data.get('domeniu', 'General')
-    description = data.get('description', 'Fără descriere')
+    domeniu = data.get('domeniu', 'General/Altele')
+    description = data.get('description', 'Fara descriere')
 
     if not description:
-        return jsonify({"error": "Descrierea procesului este goală."}), 400
+        return jsonify({"error": "Descrierea procesului este goala."}), 400
     
     if client is None:
-        return jsonify({"error": "Clientul AI nu a putut fi inițializat. Verificați cheia GEMINI_API_KEY."}), 503
+        return jsonify({"error": "Clientul AI nu a putut fi initializat. Verificati cheia GEMINI_API_KEY."}), 503
 
-    # Instrucțiunile detaliate pentru modelul AI
+    # NOU: Instructiunile detaliate pentru modelul AI (Focus pe Expertiza)
     prompt = f"""
-    Ești un expert în automatizare. Analizează procesul descris mai jos, ținând cont că domeniul de activitate este {domeniu}. 
-    Obiectivul este de a identifica pașii repetitivi, cu risc de eroare sau consumatori de timp, și de a oferi soluții structurate.
+    Esti un expert de top in domeniul **automatizarii proceselor** specializat in **{domeniu}**. 
+    Rolul tau este sa analizezi procesul descris de utilizator si sa oferi solutii bazate pe cea mai buna practica din industria **{domeniu}**. 
+    
+    Obiectivul este de a identifica pasii repetitivi, cu risc de eroare sau consumatori de timp, si de a oferi solutii structurate, instrumente sugerate si prompt-uri/cod relevante.
 
-    Descrierea procesului: "{description}"
+    Descrierea procesului de analizat: "{description}"
 
-    Generează răspunsul strict în formatul JSON definit de schema de răspuns. Nu adăuga niciun text explicativ înafara structurii JSON.
+    Genereaza raspunsul strict in formatul JSON definit de schema de raspuns. Nu adauga niciun text explicativ inafara structurii JSON.
     """
 
     try:
-        # Apelarea modelului Gemini cu schema de răspuns (Response Schema)
         response = client.models.generate_content(
             model='gemini-2.5-flash',
             contents=prompt,
@@ -80,15 +76,12 @@ def analyze_process():
             ),
         )
 
-        # Răspunsul este deja un string JSON valid, îl returnăm direct
         return response.text, 200, {'Content-Type': 'application/json'}
 
     except Exception as e:
-        # Tratează erorile de API
         app.logger.error(f"Eroare la apelarea Gemini API: {e}")
-        return jsonify({"error": f"Eroare la procesarea cererii de AI (Verifică log-urile Render): {str(e)}"}), 500
+        return jsonify({"error": f"Eroare la procesarea cererii de AI (Verifica log-urile Render): {str(e)}"}), 500
 
 if __name__ == '__main__':
-    # Folosește un port specificat de Render sau 5000 local
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=True)
