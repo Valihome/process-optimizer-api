@@ -21,7 +21,6 @@ except Exception as e:
 
 # ----------------------------------------------------
 # 2. Schema de Raspuns (CRITICA PENTRU VALIDARE JSON)
-# S-a separat schema pentru a evita SyntaxError-ul.
 # ----------------------------------------------------
 
 # Definirea proprietatilor pentru un singur element (Oportunitate)
@@ -102,44 +101,4 @@ def analyze_process():
     if client is None:
         return jsonify({"error": "Serviciul Gemini nu este configurat sau API Key lipsește."}), 500
 
-    data = request.get_json()
-    domeniu = data.get('domeniu')
-    description = data.get('description')
-
-    if not domeniu or not description:
-        return jsonify({"error": "Domeniul și descrierea procesului sunt obligatorii."}), 400
-
-    try:
-        json_output = generate_analysis(domeniu, description)
-        
-        # Testam daca rezultatul este un JSON de eroare (cand exceptiile sunt capturate)
-        if json_output is not None and json_output.startswith('{"error":'):
-            # Daca incepe cu {"error":, returnam eroarea cu 500
-            return app.response_class(
-                response=json_output,
-                status=500,
-                mimetype='application/json'
-            )
-
-        # Daca este raspunsul valid de la Gemini, il returnam cu 200
-        return app.response_class(
-            response=json_output,
-            status=200,
-            mimetype='application/json'
-        )
-
-    except Exception as e:
-        app.logger.error(f"Eroare neașteptată în ruta /api/analyze: {e}")
-        return jsonify({"error": f"Eroare de server neașteptată: {e}"}), 500
-
-@app.route('/', methods=['GET'])
-def home():
-    # O simpla ruta de verificare pentru a confirma ca serverul ruleaza
-    return jsonify({"status": "API is running", "service": "Process Optimizer Backend"})
-
-# ----------------------------------------------------
-# 5. Rulare Aplicatie
-# ----------------------------------------------------
-if __name__ == '__main__':
-    # Ruleaza aplicatia direct, Render va folosi Gunicorn
-    app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+    data = request.
