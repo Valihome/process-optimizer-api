@@ -81,7 +81,7 @@ def analyze_process():
             ),
         )
 
-        # --- CORECȚIA CRITICĂ AICI ---
+        # --- CORECȚIA CRITICĂ: Parsare și jsonify ---
         try:
             # 1. Transformă textul JSON în obiect Python (dict)
             json_response = json.loads(response.text)
