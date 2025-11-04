@@ -101,7 +101,7 @@ def analyze_process():
     if client is None:
         return jsonify({"error": "Serviciul Gemini nu este configurat sau API Key lipsește."}), 500
 
-    # LINIA CORECTATĂ: data = request.get_json()
+    # LINIA CORECTATĂ (era 'request.' si acum este 'request.get_json()')
     data = request.get_json()
     domeniu = data.get('domeniu')
     description = data.get('description')
