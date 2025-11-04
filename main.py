@@ -101,4 +101,60 @@ def analyze_process():
     if client is None:
         return jsonify({"error": "Serviciul Gemini nu este configurat sau API Key lipsește."}), 500
 
-    data = request.
+    # LINIA CORECTATĂ: data = request.get_json()
+    data = request.get_json()
+    domeniu = data.get('domeniu')
+    description = data.get('description')
+
+    if not domeniu or not description:
+        return jsonify({"error": "Domeniul și descrierea procesului sunt obligatorii."}), 400
+
+    try:
+        json_output = generate_analysis(domeniu, description)
+        
+        if json_output is not None and json_output.startswith('{"error":'):
+            return app.response_class(
+                response=json_output,
+                status=500,
+                mimetype='application/json'
+            )
+
+        return app.response_class(
+            response=json_output,
+            status=200,
+            mimetype='application/json'
+        )
+
+    except Exception as e:
+        app.logger.error(f"Eroare neașteptată în ruta /api/analyze: {e}")
+        return jsonify({"error": f"Eroare de server neașteptată: {e}"}), 500
+
+@app.route('/', methods=['GET'])
+def home():
+    # RUTA DE DIAGNOSTICARE: Verifica starea cheii API
+    if client is None:
+        return jsonify({"status": "API is running, but Gemini Client failed to initialize. Check GEMINI_API_KEY environment variable."}), 500
+
+    try:
+        # Incearca un apel simplu pentru a verifica autentificarea
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=['test'],
+            config=types.GenerateContentConfig(temperature=0)
+        )
+        if response.text:
+            return jsonify({"status": "API is running", "service": "Process Optimizer Backend", "Gemini_Status": "Success"}), 200
+        else:
+            return jsonify({"status": "API is running", "service": "Process Optimizer Backend", "Gemini_Status": "Failed to return text"}), 500
+
+    except Exception as e:
+        # Aceasta va prinde erori de autentificare (de exemplu, 400 sau 403)
+        return jsonify({"status": "API is running, but Gemini API call failed. Check GEMINI_API_KEY.", "Error_Details": str(e)}), 500
+
+
+# ----------------------------------------------------
+# 5. Rulare Aplicatie
+# ----------------------------------------------------
+if __name__ == '__main__':
+    # Ruleaza aplicatia direct, Render va folosi Gunicorn
+    app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
