@@ -7,6 +7,7 @@ from google.genai import types
 
 # Variabila OBLIGATORIE 'app' pentru Gunicorn și Flask
 app = Flask(__name__)
+# Permite accesul din Frontend
 CORS(app) 
 
 # --- 1. CONFIGURARE GEMINI API ---
@@ -55,6 +56,7 @@ def analyze_process():
         return jsonify({"error": "Descrierea procesului este goala."}), 400
     
     if client is None:
+        # EROARE DE CONEXIUNE / SERVICE INDISPONIBIL
         return jsonify({"error": "Clientul AI nu a putut fi initializat. Verificati cheia GEMINI_API_KEY."}), 503
 
     # Instructiunile detaliate pentru modelul AI (Focus pe Expertiza)
@@ -79,15 +81,15 @@ def analyze_process():
             ),
         )
 
-        # --- CORECȚIE AICI: Parsare și jsonify ---
+        # --- CORECȚIA CRITICĂ AICI ---
         try:
-            # Transformă textul JSON în obiect Python (dict)
+            # 1. Transformă textul JSON în obiect Python (dict)
             json_response = json.loads(response.text)
         except json.JSONDecodeError:
             app.logger.error("AI a returnat un JSON invalid: %s", response.text)
             return jsonify({"error": "AI a returnat un format JSON invalid. Încercați din nou sau cu un prompt diferit."}), 500
             
-        # Folosește jsonify pentru a returna dict-ul ca răspuns HTTP JSON
+        # 2. Folosește jsonify pentru a returna dict-ul ca răspuns HTTP JSON
         return jsonify(json_response), 200
 
     except Exception as e:
