@@ -59,7 +59,6 @@ SYSTEM_INSTRUCTION = (
     """Ești un expert în automatizarea proceselor de afaceri (BPA) și în eficientizare digitală. 
     Misiunea ta este să analizezi un proces descris de utilizator, să identifici punctele de ineficiență (repetiții, blocaje, riscuri de eroare) și să propui soluții concrete de automatizare, folosind instrumente relevante. 
     Răspunsul tău trebuie să fie strict în limba română și să respecte formatul JSON specificat exact, fără text explicativ suplimentar."""
-    # S-a confirmat închiderea cu """ pentru a evita SyntaxError: unterminated string literal
 )
 
 def generate_analysis(domeniu, description):
@@ -67,7 +66,6 @@ def generate_analysis(domeniu, description):
     model = 'gemini-2.5-flash'
 
     prompt_text = (
-        # Prompt actualizat pentru a evidenția expertiza în domeniu
         f"Acționează ca un **expert specializat în domeniul '{domeniu}'**. "
         f"Analizează următorul proces: '{description}'. " 
         "Identifică minim 3 oportunități clare de automatizare sau optimizare și completează strict schema JSON."
@@ -86,9 +84,15 @@ def generate_analysis(domeniu, description):
         )
         # Conținutul va fi un string JSON
         return response.text
+        
+    except genai.errors.ResourceExhausted as e:
+        app.logger.error(f"Eroare Gemini (Quota sau Timp Expirat): {e}")
+        # Returnam un JSON de eroare, nu None
+        return f'{{"error": "Eroare: Quota depășită, cererea este prea lungă sau timeout-ul a expirat. Detalii: {e}"}}'
     except Exception as e:
         app.logger.error(f"Eroare la apelarea Gemini API: {e}")
-        return None
+        # Returnam un JSON de eroare, nu None
+        return f'{{"error": "Eroare la generarea analizei. Cauza: {e}"}}'
 
 # ----------------------------------------------------
 # 4. Rute Flask
@@ -107,12 +111,17 @@ def analyze_process():
 
     try:
         json_output = generate_analysis(domeniu, description)
+        
+        # Testam daca rezultatul este un JSON de eroare (cand exceptiile sunt capturate)
+        if json_output is not None and json_output.startswith('{"error":'):
+            # Daca incepe cu {"error":, returnam eroarea cu 500
+            return app.response_class(
+                response=json_output,
+                status=500,
+                mimetype='application/json'
+            )
 
-        if json_output is None:
-            # Daca generate_analysis returneaza None, este o eroare interna Gemini
-            return jsonify({"error": "Generarea analizei a eșuat. Vă rugăm reîncercați."}), 500
-
-        # Returneaza direct string-ul JSON generat de model
+        # Daca este raspunsul valid de la Gemini, il returnam cu 200
         return app.response_class(
             response=json_output,
             status=200,
