@@ -1,25 +1,27 @@
-from flask import Flask, jsonify, request
-from flask_cors import CORS
 import os
-import json # Adaugat pentru parsarea raspunsului AI
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 from google import genai
 from google.genai import types
 
-# Variabila OBLIGATORIE 'app' pentru Gunicorn și Flask
+# ----------------------------------------------------
+# 1. Configurarea Aplicatiei si API Key
+# ----------------------------------------------------
 app = Flask(__name__)
-# Permite accesul din Frontend. Atentie: Nu lasa spatii invizibile dupa CORS(app)
+# Permite cererile CORS de pe orice domeniu (Frontend-ul tau Render)
 CORS(app) 
 
-# --- 1. CONFIGURARE GEMINI API ---
+# Initializarea clientului Gemini
 try:
-    # Clientul se va initializa daca variabila de mediu GEMINI_API_KEY este setata
+    # GenAI citeste automat GEMINI_API_KEY din variabilele de mediu Render
     client = genai.Client()
 except Exception as e:
-    # Atentie: Initializarea clientului AI a esuat
-    print(f"Atentie: Initializarea clientului AI a esuat. S-a asteapta setarea GEMINI_API_KEY. Eroare: {e}")
+    print(f"Eroare la initializarea clientului Gemini: {e}")
     client = None
 
-# Definirea schemei de răspuns JSON
+# ----------------------------------------------------
+# 2. Schema de Raspuns (CRITICA PENTRU VALIDARE JSON)
+# ----------------------------------------------------
 RESPONSE_SCHEMA = types.Schema(
     type=types.Type.OBJECT,
     properties={
@@ -45,57 +47,83 @@ RESPONSE_SCHEMA = types.Schema(
     required=["analiza_generala", "oportunitati_optimizare", "next_steps"]
 )
 
-# 2. Ruta API pentru analiză
-@app.route('/api/analyze', methods=['POST'])
-def analyze_process():
-    data = request.get_json()
-    domeniu = data.get('domeniu', 'General/Altele')
-    description = data.get('description', 'Fara descriere')
+# ----------------------------------------------------
+# 3. Prompt si Functie de Analiza
+# ----------------------------------------------------
+SYSTEM_INSTRUCTION = (
+    "Ești un expert în automatizarea proceselor de afaceri (BPA) și în eficientizare digitală. "
+    "Misiunea ta este să analizezi un proces descris de utilizator, să identifici punctele de ineficiență (repetiții, blocaje, riscuri de eroare) și să propui soluții concrete de automatizare, folosind instrumente relevante. "
+    "Răspunsul tău trebuie să fie strict în limba română și să respecte formatul JSON specificat exact, fără text explicativ suplimentar."
+)
 
-    if not description:
-        return jsonify({"error": "Descrierea procesului este goala."}), 400
-    
-    if client is None:
-        # EROARE DE CONEXIUNE / SERVICE INDISPONIBIL
-        return jsonify({"error": "Clientul AI nu a putut fi initializat. Verificati cheia GEMINI_API_KEY."}), 503
+def generate_analysis(domeniu, description):
+    # Modelul ideal pentru extragerea JSON structurat
+    model = 'gemini-2.5-flash'
 
-    # Instructiunile detaliate pentru modelul AI (Focus pe Expertiza)
-    prompt = f"""
-    Esti un expert de top in domeniul **automatizarii proceselor** specializat in **{domeniu}**. 
-    Rolul tau este sa analizezi procesul descris de utilizator si sa oferi solutii bazate pe cea mai buna practica din industria **{domeniu}**. 
-    
-    Obiectivul este de a identifica pasii repetitivi, cu risc de eroare sau consumatori de timp, si de a oferi solutii structurate, instrumente sugerate si prompt-uri/cod relevante.
-
-    Descrierea procesului de analizat: "{description}"
-
-    Genereaza raspunsul strict in formatul JSON definit de schema de raspuns. Nu adauga niciun text explicativ inafara structurii JSON.
-    """
+    prompt_text = (
+        f"Analizează următorul proces din domeniul '{domeniu}'. "
+        f"Procesul: '{description}'. "
+        "Identifică minim 3 oportunități clare de automatizare sau optimizare și completează strict schema JSON."
+    )
 
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt,
+            model=model,
+            contents=[prompt_text],
             config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_INSTRUCTION,
                 response_mime_type="application/json",
                 response_schema=RESPONSE_SCHEMA,
-            ),
+                temperature=0.2 
+            )
         )
-
-        # CORECȚIA CRITICĂ: Parsare și jsonify
-        try:
-            # 1. Transformă textul JSON în obiect Python (dict)
-            json_response = json.loads(response.text)
-        except json.JSONDecodeError:
-            app.logger.error("AI a returnat un JSON invalid: %s", response.text)
-            return jsonify({"error": "AI a returnat un format JSON invalid. Încercați din nou sau cu un prompt diferit."}), 500
-            
-        # 2. Folosește jsonify pentru a returna dict-ul ca răspuns HTTP JSON
-        return jsonify(json_response), 200
-
+        # Conținutul va fi un string JSON
+        return response.text
     except Exception as e:
         app.logger.error(f"Eroare la apelarea Gemini API: {e}")
-        return jsonify({"error": f"Eroare la procesarea cererii de AI: {str(e)}"}), 500
+        return None
 
+# ----------------------------------------------------
+# 4. Rute Flask
+# ----------------------------------------------------
+@app.route('/api/analyze', methods=['POST'])
+def analyze_process():
+    if client is None:
+        return jsonify({"error": "Serviciul Gemini nu este configurat sau API Key lipsește."}), 500
+
+    data = request.get_json()
+    domeniu = data.get('domeniu')
+    description = data.get('description')
+
+    if not domeniu or not description:
+        return jsonify({"error": "Domeniul și descrierea procesului sunt obligatorii."}), 400
+
+    try:
+        json_output = generate_analysis(domeniu, description)
+
+        if json_output is None:
+            # Daca generate_analysis returneaza None, este o eroare interna Gemini
+            return jsonify({"error": "Generarea analizei a eșuat. Vă rugăm reîncercați."}), 500
+
+        # Returneaza direct string-ul JSON generat de model
+        return app.response_class(
+            response=json_output,
+            status=200,
+            mimetype='application/json'
+        )
+
+    except Exception as e:
+        app.logger.error(f"Eroare neașteptată în ruta /api/analyze: {e}")
+        return jsonify({"error": f"Eroare de server neașteptată: {e}"}), 500
+
+@app.route('/', methods=['GET'])
+def home():
+    # O simpla ruta de verificare pentru a confirma ca serverul ruleaza
+    return jsonify({"status": "API is running", "service": "Process Optimizer Backend"})
+
+# ----------------------------------------------------
+# 5. Rulare Aplicatie
+# ----------------------------------------------------
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    # Ruleaza aplicatia direct, Render va folosi Gunicorn
+    app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
